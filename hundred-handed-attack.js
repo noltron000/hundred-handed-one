@@ -65,7 +65,7 @@ const content = `
 		type='text'
 		name='input-damage-per-attack'
 		id='input-damage-per-attack'
-		value='1d4 + 3'
+		value='1d4'
 	></input>
 
 	<br />
@@ -84,36 +84,43 @@ const content = `
 </form>
 `
 
+const rollCombiner = async (finalPromise, thisRoll) => {
+	const finalMessage = await finalPromise
+	const thisMessage = await thisRoll.toMessage({ }, {create: false})
+
+	if (finalMessage == null) return thisMessage
+	finalMessage.rolls.push(thisMessage.rolls.pop( ))
+	return finalMessage
+}
+
 const callback = async (html) => {
 	let attackRollType = html.find('input[name=\'input-radio\']')
 	let numberOfAttacks = html.find('input[name=\'input-number-of-attacks\']')
 	let damagePerAttack = html.find('input[name=\'input-damage-per-attack\']')
 	let targetArmorClass = html.find('input[name=\'input-target-armor-class\']')
 
-	numberOfAttacks = numberOfAttacks.val()
-	attackRollType = attackRollType.val()
-	damagePerAttack = damagePerAttack.val()
-	targetArmorClass = targetArmorClass.val()
+	attackRollType = attackRollType.val( ) // advantage / normal / disadvantage
+	damagePerAttack = damagePerAttack.val( ) //  string
+	numberOfAttacks = parseInt(numberOfAttacks.val( ))
+	targetArmorClass = parseInt(targetArmorClass.val( ))
 
-	console.log(attackRollType)
+	let attackCoreDice
+	if (attackRollType === 'advantage') attackCoreDice = '2d20dl1'
+	else if (attackRollType === 'disadvantage') attackCoreDice = '2d20dh1'
+	else attackCoreDice = '1d20'
 
-	const attackRollBonus = +3
-	targetArmorClass -= attackRollBonus
+	const attackRollModifiers = '3[dexterity] + 6[proficiency]'
+	const attackRollText = `${attackCoreDice} + ${attackRollModifiers}`
 
-	const attackRollText = `${numberOfAttacks}d20cs>=(${targetArmorClass} - ${attackRollBonus})`
-	const attackRoll = new Roll(attackRollText)
-	await attackRoll.roll()
+	const allAttackRolls = (new Array(numberOfAttacks))
+	.fill(null).map(( ) => new Roll(attackRollText))
 
-	const confirmAttack = async ( ) => {
-		ChatMessage.create({
-			user: game.user._id,
-			speaker: ChatMessage.getSpeaker(),
-			content: 'A flowing, worm-like mass of arms approach you at a terrifying pace...'
-		})
+	const attackRollMessage = await allAttackRolls.reduce(rollCombiner, null)
+	attackRollMessage.flavor = 'A flowing, worm-like mass of arms approach you at a terrifying pace...'
 
-		await attackRoll.toMessage()
-	}
+	ChatMessage.create(attackRollMessage)
 
+	/*
 	const attacksThatHit = parseInt(attackRoll.result)
 
 	const damageRollText = new Array(attacksThatHit)
@@ -132,9 +139,9 @@ const callback = async (html) => {
 		await damageRoll.toMessage()
 	}
 
-	await confirmAttack( )
 	await asyncTimeout(6000)
 	await confirmDamage( )
+	*/
 }
 
 const buttonProps = {
