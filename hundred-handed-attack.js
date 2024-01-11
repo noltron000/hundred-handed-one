@@ -11,12 +11,12 @@ const content = `
 		<div>
 			<input
 				type='radio'
-				id='input-radio-normal-roll'
+				id='normal-roll'
 				name='input-radio'
-				value='normal'
+				value='normal-roll'
 				checked
 			/>
-			<label for='input-radio-normal-roll'>
+			<label for='normal-roll'>
 				Normal Roll
 			</label>
 		</div>
@@ -24,11 +24,11 @@ const content = `
 		<div>
 			<input
 				type='radio'
-				id='input-radio-advantage'
+				id='advantage-roll'
 				name='input-radio'
-				value='advantage'
+				value='advantage-roll'
 			/>
-			<label for='input-radio-advantage'>
+			<label for='advantage-roll'>
 				Advantage
 			</label>
 		</div>
@@ -36,11 +36,11 @@ const content = `
 		<div>
 			<input
 				type='radio'
-				id='input-radio-disadvantage'
+				id='disadvantage-roll'
 				name='input-radio'
-				value='disadvantage'
+				value='disadvantage-roll'
 			/>
-			<label for='input-radio-disadvantage'>
+			<label for='disadvantage-roll'>
 				Disadvantage
 			</label>
 		</div>
@@ -84,41 +84,108 @@ const content = `
 </form>
 `
 
+// This takes a roll promise and a roll, and returns a roll promise.
+// It combines the final roll with the given roll and returns it.
 const rollCombiner = async (finalPromise, thisRoll) => {
+	// Obtain the two roll messages.
 	const finalMessage = await finalPromise
 	const thisMessage = await thisRoll.toMessage({ }, {create: false})
 
+	// Determine the return value. Expect null as the base case.
 	if (finalMessage == null) return thisMessage
 	finalMessage.rolls.push(thisMessage.rolls.pop( ))
 	return finalMessage
 }
 
 const callback = async (html) => {
-	let attackRollType = html.find('input[name=\'input-radio\']')
+	// STEP 1: DIALOGUE SETUP.
+	// Let's gather up the information given from the DM.
+	let attackRollType = html.find('input[name=\'input-radio\']:checked')
 	let numberOfAttacks = html.find('input[name=\'input-number-of-attacks\']')
-	let damagePerAttack = html.find('input[name=\'input-damage-per-attack\']')
+	let damageRollText = html.find('input[name=\'input-damage-per-attack\']')
 	let targetArmorClass = html.find('input[name=\'input-target-armor-class\']')
 
+	// Parse that info with jquery vals.
 	attackRollType = attackRollType.val( ) // advantage / normal / disadvantage
-	damagePerAttack = damagePerAttack.val( ) //  string
+	damageRollText = damageRollText.val( ) // string
 	numberOfAttacks = parseInt(numberOfAttacks.val( ))
 	targetArmorClass = parseInt(targetArmorClass.val( ))
 
+	// Now determine roll type: advantage/disadvantage/normal
 	let attackCoreDice
-	if (attackRollType === 'advantage') attackCoreDice = '2d20dl1'
-	else if (attackRollType === 'disadvantage') attackCoreDice = '2d20dh1'
+	if (attackRollType === 'advantage-roll') attackCoreDice = '2d20dl1'
+	else if (attackRollType === 'disadvantage-roll') attackCoreDice = '2d20dh1'
 	else attackCoreDice = '1d20'
 
-	const attackRollModifiers = '3[dexterity] + 6[proficiency]'
-	const attackRollText = `${attackCoreDice} + ${attackRollModifiers}`
+	// Finish attack roll setup
+	const attackRollModifier = +9 // +3 dex; +6 prof
+	const attackRollText = `${attackCoreDice} + ${attackRollModifier}`
 
+	// STEP 2: ATTACK EXECUTION.
+	// Let's generate a series of dice rolls from the info given above.
 	const allAttackRolls = (new Array(numberOfAttacks))
 	.fill(null).map(( ) => new Roll(attackRollText))
 
+	// Craft the attack roll message.
+	// Use this later with `ChatMessage.create(...)`!
 	const attackRollMessage = await allAttackRolls.reduce(rollCombiner, null)
-	attackRollMessage.flavor = 'A flowing, worm-like mass of arms approach you at a terrifying pace...'
+	/* FLUFF FOR LATER
+	attackRollMessage.flavor = 'A flowing, worm-like mass of arms approaches you at a terrifying pace...'
+	*/
 
-	ChatMessage.create(attackRollMessage)
+	// STEP 3: ATTACK ANALYSIS.
+	let attackAnalysisText = allAttackRolls.map((roll) => roll.total).join(', ')
+	attackAnalysisText = `{${attackAnalysisText}}cs>=${targetArmorClass}[Armor Class]`
+
+	const attackAnalysis = new Roll(attackAnalysisText)
+	await attackAnalysis.roll( )
+
+	const numberOfHits = attackAnalysis.total
+	const numberOfMisses = numberOfAttacks - numberOfHits
+
+	// Craft the attack roll analysis message.
+	// Use this later with `ChatMessage.create(...)`!
+	const attackAnalysisMessage = await attackAnalysis.toMessage({ }, {create: false})
+
+
+	/* FLUFF FOR LATER
+	attackAnalysisMessage.flavor = (
+		`Flowing, worm-like masses of arms approach you at a terrifying pace... `
+		+ `A wave of ${numberOfAttacks} arms fly towards you to attack. `
+	)
+
+	if (numberOfMisses == 0) {
+		attackAnalysisMessage.flavor += 'Confoundingly, every single arm manages to pummel into you!'
+	}
+	else if (numberOfHits == 0) {
+		attackAnalysisMessage.flavor += 'Miraculously, you manage to nullify the entirety of the titan\'s onslaught!'
+	}
+	else if (numberOfHits == 1) {
+		attackAnalysisMessage.flavor += 'However, you manage to evade all but one of the great worm\'s many arms!'
+	}
+	else {
+		attackAnalysisMessage.flavor += `Although you manage to avoid the full-force of ${numberOfMisses} hits, ${numberOfAttacks} arms still reach you!`
+	}
+	*/
+
+	// STEP 4: DAMAGE ROLL EXECUTION.
+	const allDamageRolls = (new Array(numberOfHits))
+	.fill(null).map(( ) => new Roll(damageRollText))
+
+	const damageRollMessage = await allDamageRolls.reduce(rollCombiner, null)
+
+	// STEP 5: DAMAGE ROLL ANALYSIS.
+	const damageAnalysisText = allDamageRolls.map((roll) => roll.total).join(' + ')
+	const damageAnalysis = new Roll(damageAnalysisText)
+	const damageAnalysisMessage = await damageAnalysis.toMessage({ }, {create: false})
+
+	await ChatMessage.create(attackRollMessage)
+	await asyncTimeout(2000)
+	await ChatMessage.create(attackAnalysisMessage)
+	await asyncTimeout(6000)
+	await ChatMessage.create(damageRollMessage)
+	await asyncTimeout(2000)
+	await ChatMessage.create(damageAnalysisMessage)
 
 	/*
 	const attacksThatHit = parseInt(attackRoll.result)
