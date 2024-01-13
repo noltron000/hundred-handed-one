@@ -65,7 +65,7 @@ const content = `
 		type='text'
 		name='input-damage-per-attack'
 		id='input-damage-per-attack'
-		value='1d4'
+		value='1d4 - 1'
 	></input>
 
 	<br />
@@ -84,17 +84,15 @@ const content = `
 </form>
 `
 
-// This takes a roll promise and a roll, and returns a roll promise.
-// It combines the final roll with the given roll and returns it.
-const rollCombiner = async (finalPromise, thisRoll) => {
-	// Obtain the two roll messages.
-	const finalMessage = await finalPromise
-	const thisMessage = await thisRoll.toMessage({ }, {create: false})
+const getContentFromRolls = async (rolls) => {
+	let anchors = rolls.map(async (roll) => {
+		await roll.roll( )
+		const anchor = await roll.toAnchor( )
+		return anchor.outerHTML
+	})
 
-	// Determine the return value. Expect null as the base case.
-	if (finalMessage == null) return thisMessage
-	finalMessage.rolls.push(thisMessage.rolls.pop( ))
-	return finalMessage
+	anchors = await Promise.all(anchors)
+	return anchors.join(' ')
 }
 
 const callback = async (html) => {
@@ -118,7 +116,7 @@ const callback = async (html) => {
 	else attackCoreDice = '1d20'
 
 	// Finish attack roll setup
-	const attackRollModifier = +9 // +3 dex; +6 prof
+	const attackRollModifier = +5 // -1 dex; +6 prof
 	const attackRollText = `${attackCoreDice} + ${attackRollModifier}`
 
 	// STEP 2: ATTACK EXECUTION.
@@ -128,10 +126,15 @@ const callback = async (html) => {
 
 	// Craft the attack roll message.
 	// Use this later with `ChatMessage.create(...)`!
-	const attackRollMessage = await allAttackRolls.reduce(rollCombiner, null)
-	/* FLUFF FOR LATER
-	attackRollMessage.flavor = 'A flowing, worm-like mass of arms approaches you at a terrifying pace...'
-	*/
+	const attackRollMessage = new ChatMessage({
+		flavor: (
+			'Flowing, worm-like masses of arms approach at a terrifying pace... '
+			+ `A wave of ${numberOfAttacks} arms fly towards you to attack.`
+			+ '<hr />'
+			+ '<h3>ATTACK ROLLS</h3>'
+		),
+		content: await getContentFromRolls(allAttackRolls)
+	})
 
 	// STEP 3: ATTACK ANALYSIS.
 	let attackAnalysisText = allAttackRolls.map((roll) => roll.total).join(', ')
@@ -147,13 +150,9 @@ const callback = async (html) => {
 	// Use this later with `ChatMessage.create(...)`!
 	const attackAnalysisMessage = await attackAnalysis.toMessage({ }, {create: false})
 
-
-	/* FLUFF FOR LATER
-	attackAnalysisMessage.flavor = (
-		`Flowing, worm-like masses of arms approach you at a terrifying pace... `
-		+ `A wave of ${numberOfAttacks} arms fly towards you to attack. `
-	)
-
+	// Set the flavor here using these informative variables.
+	attackAnalysisMessage.flavor = ''
+	// Use a conditional flavor for more immersion!
 	if (numberOfMisses == 0) {
 		attackAnalysisMessage.flavor += 'Confoundingly, every single arm manages to pummel into you!'
 	}
@@ -164,51 +163,35 @@ const callback = async (html) => {
 		attackAnalysisMessage.flavor += 'However, you manage to evade all but one of the great worm\'s many arms!'
 	}
 	else {
-		attackAnalysisMessage.flavor += `Although you manage to avoid the full-force of ${numberOfMisses} hits, ${numberOfAttacks} arms still reach you!`
+		attackAnalysisMessage.flavor += `Although you manage to avoid the full-force of ${numberOfMisses} hits, ${numberOfHits} arms still reach you!`
 	}
-	*/
 
 	// STEP 4: DAMAGE ROLL EXECUTION.
 	const allDamageRolls = (new Array(numberOfHits))
 	.fill(null).map(( ) => new Roll(damageRollText))
 
-	const damageRollMessage = await allDamageRolls.reduce(rollCombiner, null)
+	const damageRollMessage = new ChatMessage({
+		flavor: '<h3>DAMAGE ROLLS</h3>',
+		content: await getContentFromRolls(allDamageRolls)
+	})
 
 	// STEP 5: DAMAGE ROLL ANALYSIS.
-	const damageAnalysisText = allDamageRolls.map((roll) => roll.total).join(' + ')
+	let damageAnalysisText = allDamageRolls.map((roll) => roll.total).join(' + ')
+	if (damageAnalysisText == '') damageAnalysis = '0[No Rolls]'
+
 	const damageAnalysis = new Roll(damageAnalysisText)
+	await damageAnalysis.roll( )
+
 	const damageAnalysisMessage = await damageAnalysis.toMessage({ }, {create: false})
+	damageAnalysisMessage.flavor = 'Here is the total damage which the titan dealt.'
 
 	await ChatMessage.create(attackRollMessage)
-	await asyncTimeout(2000)
+	await asyncTimeout(6000)
 	await ChatMessage.create(attackAnalysisMessage)
-	await asyncTimeout(6000)
+	await asyncTimeout(3000)
 	await ChatMessage.create(damageRollMessage)
-	await asyncTimeout(2000)
+	await asyncTimeout(3000)
 	await ChatMessage.create(damageAnalysisMessage)
-
-	/*
-	const attacksThatHit = parseInt(attackRoll.result)
-
-	const damageRollText = new Array(attacksThatHit)
-	.fill(damagePerAttack)
-	.join(' + ')
-
-	const damageRoll = new Roll(damageRollText)
-	await damageRoll.roll()
-
-	const confirmDamage = async ( ) => {
-		ChatMessage.create({
-			user: game.user._id,
-			speaker: ChatMessage.getSpeaker(),
-			content: `Of the ${numberOfAttacks} arms that lunge out at you, ${attacksThatHit} attacks hit!`
-		})
-		await damageRoll.toMessage()
-	}
-
-	await asyncTimeout(6000)
-	await confirmDamage( )
-	*/
 }
 
 const buttonProps = {
