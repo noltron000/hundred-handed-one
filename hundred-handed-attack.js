@@ -53,7 +53,7 @@ const content = `
 		type='number'
 		name='input-number-of-attacks'
 		id='input-number-of-attacks'
-		value=25
+		value=30
 	></input>
 
 	<br />
@@ -65,7 +65,7 @@ const content = `
 		type='text'
 		name='input-damage-per-attack'
 		id='input-damage-per-attack'
-		value='1d4 - 1'
+		value='2d2'
 	></input>
 
 	<br />
@@ -116,7 +116,7 @@ const callback = async (html) => {
 	else attackCoreDice = '1d20'
 
 	// Finish attack roll setup
-	const attackRollModifier = +5 // -1 dex; +6 prof
+	const attackRollModifier = '1d12' // +0 dex; +1d12 prof
 	const attackRollText = `${attackCoreDice} + ${attackRollModifier}`
 
 	// STEP 2: ATTACK EXECUTION.
