@@ -1,3 +1,4 @@
+// Causes the system to wait, given a number of milliseconds.
 const asyncTimeout = async (ms) => {
 	return await new Promise(resolve => setTimeout(resolve, ms));
 }
